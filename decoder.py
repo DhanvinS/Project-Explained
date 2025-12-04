@@ -52,6 +52,9 @@ class VAE_ResidualBlock(nn.Module):
             self.residual_layer = nn.Identity()
         else:
             self.residual_layer = nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0)
+            # this adds a copy of input x to the transformed input
+            # so after differentiating this we get an identity matrix from dx/dx and this helps counter vanishing gradients
+            # instead of multiplying by many small values u multiply byt one
         """Shortcut connection: ensures residue has the same number of channels as output.
             If channels match → just add input as-is.
             If channels differ → use 1×1 conv to match channel count"""
@@ -78,10 +81,13 @@ class VAE_Decoder(nn.Sequential):
     def __init__(self):
         super().__init__(
 
-            """The decoder reconstructs the image from the latent vector z, which already encodes “what” and “where” information about the original image.
+            """The decoder reconstructs the image from the latent vector z, which already encodes “what” and “where” 
+                information about the original image.
                 What provides reconstruction info
-                The encoder has already packed the image into z (shape like 4×64×64), where each channel and spatial location stores high-level features of the original image.
-                The decoder is just a learned inverse: a stack of upsampling + conv layers trained so that, given z, it learns how to “inflate” those features back into a full 3×512×512 image that matches the input"""
+                The encoder has already packed the image into z (shape like 4×64×64), where each channel and 
+                spatial location stores high-level features of the original image.
+                The decoder is just a learned inverse: a stack of upsampling + conv layers trained so that, 
+                given z, it learns how to “inflate” those features back into a full 3×512×512 image that matches the input"""
 
             nn.Conv2d(4, 4, kernel_size=1, padding=0),
 
