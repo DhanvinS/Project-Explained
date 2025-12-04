@@ -105,6 +105,7 @@ class DDPMSampler:
 
        
         pred_original_sample = (latents - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        # predict initial image
         """Formula: x₀̂ = (x_t - √(1-ᾱ_t) ε̂) / √ᾱ_t
            Uses predicted noise to estimate clean latent at t=0."""
         # estimate clean image using formula
