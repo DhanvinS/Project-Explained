@@ -49,7 +49,7 @@ class DDPMSampler:
         
     
     def _get_variance(self, timestep: int) -> torch.Tensor:
-        # this func computes how much random noise to add at this step when going from xt to xt-1
+        # it controls how wide the random jump is at each denoising step, not how much noise to remove
         prev_t = self._get_previous_timestep(timestep)
         # finds which earlier timestep this should go
         alpha_prod_t = self.alphas_cumprod[timestep]
