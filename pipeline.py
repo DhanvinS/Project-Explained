@@ -62,13 +62,13 @@ tokenizer – for tokenizing text prompts"""
             raise ValueError("strength must be between 0 and 1")
             """That snippet is doing two things: turning off gradient tracking for the block, and checking that strength
             is in the range (0, 1], otherwise throwing a nice error"""
+            # Gradient tracking is when the framework records all tensor operations so it can compute gradients automatically during backprop
 
         if idle_device:
             to_idle = lambda x: x.to(idle_device)
         else:
             to_idle = lambda x: x
-            """Checks that strength is valid.
-            Defines a helper to_idle() to move unused models to idle_device (e.g., CPU)
+            """ Defines a helper to_idle() to move unused models to idle_device (e.g., CPU)
               to save GPU memory """
 
         # Sets up a deterministic random number generator for sampling noise.
@@ -84,35 +84,48 @@ tokenizer – for tokenizing text prompts"""
         clip = models["clip"]
         clip.to(device)
         # load clip
-        
+
+
+        """Classifier-Free Guidance (CFG) is a trick used in diffusion models to:
+            make images follow the text prompt more strongly.
+            Without CFG, images may look nice but don’t follow the prompt tightly.    
+            With CFG, the model becomes more aligned and detailed."""
         if do_cfg:
+            # Only run this block if classifier‑free guidance is enabled.
             cond_tokens = tokenizer.batch_encode_plus(
                 [prompt], padding="max_length", max_length=77
             ).input_ids
+            # Tokenize the conditional text prompt into token IDs, pad/truncate to length 77 (CLIP’s max length), and take the input_ids array
+            
             cond_tokens = torch.tensor(cond_tokens, dtype=torch.long, device=device)
+            # Convert those IDs into a PyTorch LongTensor on the correct device (CPU/GPU) so CLIP can use them
+            
             cond_context = clip(cond_tokens)
+            # Run the tokens through the CLIP text encoder to get the conditional text embedding (context).
+            
             uncond_tokens = tokenizer.batch_encode_plus(
                 [uncond_prompt], padding="max_length", max_length=77
             ).input_ids
+            """Do the same tokenization and padding, but for the unconditional prompt (usually an empty string or something like " ")"""
+            
             uncond_tokens = torch.tensor(uncond_tokens, dtype=torch.long, device=device)
             uncond_context = clip(uncond_tokens)
             context = torch.cat([cond_context, uncond_context])
+            # Concatenate the conditional and unconditional embeddings along the batch dimension, so the diffusion U‑Net can process both at once and later combine them for CFG
         else:
             tokens = tokenizer.batch_encode_plus(
                 [prompt], padding="max_length", max_length=77
             ).input_ids
             tokens = torch.tensor(tokens, dtype=torch.long, device=device)
             context = clip(tokens)
-        to_idle(clip) # move slip to idle devise
-        """Converts prompt(s) into token IDs, pads them to length 77 (CLIP’s max sequence length).
-
-        Sends them through CLIP to get context embeddings.
-
-        If do_cfg (classifier-free guidance):
-
-            Compute embeddings for conditional and unconditional prompts.
-
-            Concatenate them along batch dimension → 2 * Batch_Size for later CFG processing"""
+        to_idle(clip) # move clip to idle devise
+        # same this as if byt we do not use unconditional embedding here
+        """Considering the uncond input lets the model see what it would generate with no prompt and then push the result
+            toward your actual prompt.
+            The uncond embedding is like a “baseline” image prior (no text guidance), and the cond embedding is the image
+            biased toward your prompt.​
+            CFG later combines them (roughly pred = uncond + scale * (cond - uncond)), which amplifies features that depend 
+            on the prompt and suppresses stuff the model would generate anyway, so images follow the text more strongly"""
 
 
 
@@ -124,6 +137,11 @@ tokenizer – for tokenizing text prompts"""
         # Instantiates DDPM sampler and sets the number of diffusion steps
 
         latents_shape = (1, 4, LATENTS_HEIGHT, LATENTS_WIDTH)
+        """Creates a DDPM sampler with the given random generator and sets how many diffusion steps to use at inference 
+        (n_inference_steps).​
+            Defines the shape of the latent tensor as (batch=1, channels=4, H=LATENTS_HEIGHT, W=LATENTS_WIDTH),
+            matching the VAE latent space (4 channels, spatial size = image size / 8)"""
+        
         """Shape of latent tensor:
             Batch size = 1
             Channels = 4 (latent channels for VAE)
@@ -169,21 +187,28 @@ tokenizer – for tokenizing text prompts"""
 
         diffusion = models["diffusion"]
         diffusion.to(device)
+        # Grab the diffusion U‑Net from the model dict and move it to the active device (GPU/CPU).
 
         timesteps = tqdm(sampler.timesteps)
         for i, timestep in enumerate(timesteps):
+            # Iterate over the DDPM inference timesteps with a progress bar.
             time_embedding = get_time_embedding(timestep).to(device)
+            # Compute the sinusoidal (or similar) time embedding for this timestep and move it to the device; this tells the U‑Net “which diffusion step you’re at
 
             model_input = latents
+            # Start with the current latent as the U‑Net input.
 
             if do_cfg:
                 model_input = model_input.repeat(2, 1, 1, 1)
+                # If CFG is on, duplicate the latents along the batch dimension so the U‑Net can process conditional and unconditional contexts in one forward pass.
 
             model_output = diffusion(model_input, context, time_embedding)
 
             if do_cfg:
                 output_cond, output_uncond = model_output.chunk(2)
                 model_output = cfg_scale * (output_cond - output_uncond) + output_uncond
+                # If CFG is used, split the U‑Net outputs into conditional and unconditional halves and combine
+                # them with the CFG formula to strengthen prompt alignment.
 
             latents = sampler.step(timestep, latents, model_output)
             """This loop is turning noise into an image latent step by step.
