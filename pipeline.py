@@ -60,6 +60,8 @@ tokenizer – for tokenizing text prompts"""
     with torch.no_grad():
         if not 0 < strength <= 1:
             raise ValueError("strength must be between 0 and 1")
+            """That snippet is doing two things: turning off gradient tracking for the block, and checking that strength
+            is in the range (0, 1], otherwise throwing a nice error"""
 
         if idle_device:
             to_idle = lambda x: x.to(idle_device)
