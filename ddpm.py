@@ -8,6 +8,7 @@ class DDPMSampler:
         # In this context, the generator is the random number generator object that creates the initial noise for the diffusion process and controls reproducibility via its seed.
         # We have start beta and end beta and we divide up the range into diff beta values over the 1000 steps
         self.betas = torch.linspace(beta_start ** 0.5, beta_end ** 0.5, num_training_steps, dtype=torch.float32) ** 2
+        """We take the square root so that beta increases more smoothly at the start, preventing the model from adding too much noise too early and making diffusion training more stable."""
         # This line is creating a 1D tensor of betas that increase quadratically over time, using a trick with square roots to make the square roots of betas increase linearly
         self.alphas = 1.0 - self.betas
         # initializing alpha and beta values
