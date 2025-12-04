@@ -28,6 +28,7 @@ class DDPMSampler:
 
     def set_inference_timesteps(self, num_inference_steps=50):
         """This function picks which timesteps to actually use at when denoising when you want fewer steps than the model was trained with. We dont want to go through all the 1000 steps while denoising"""
+        # IMP !!!! - this is only during image generation not during training
         self.num_inference_steps = num_inference_steps
         step_ratio = self.num_train_timesteps // self.num_inference_steps
         # Computes how many training steps you “skip” between each inference step (e.g., 1000 train steps → 50 inference steps ⇒ step_ratio = 20)
