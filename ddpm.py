@@ -27,7 +27,7 @@ class DDPMSampler:
         """The last line builds a tensor that lists all the diffusion timesteps in reverse order, so the sampler knows which step index to use at each denoising step"""
 
     def set_inference_timesteps(self, num_inference_steps=50):
-        """This function picks which timesteps to actually use at inference when you want fewer steps than the model was trained with."""
+        """This function picks which timesteps to actually use at when denoising when you want fewer steps than the model was trained with. We dont want to go through all the 1000 steps while denoising"""
         self.num_inference_steps = num_inference_steps
         step_ratio = self.num_train_timesteps // self.num_inference_steps
         # Computes how many training steps you “skip” between each inference step (e.g., 1000 train steps → 50 inference steps ⇒ step_ratio = 20)
