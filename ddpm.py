@@ -14,6 +14,7 @@ class DDPMSampler:
         self.alphas = 1.0 - self.betas
         # initializing alpha and beta values
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        """ Cummulative alpha """
         #ᾱ_t = product_{i=1}^t α_i-> cumulative product, used in formulas for forward q(x_t|x₀).
         #This tells the total signal retention after t steps
         # we can sample any point in forward process in one shot using this
