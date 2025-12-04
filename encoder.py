@@ -17,8 +17,13 @@ class VAE_Encoder(nn.Sequential):
             
             VAE_ResidualBlock(128, 128),
             VAE_ResidualBlock(128, 128),
+            """They strongly reduce vanishing-gradient and “degradation” problems when stacking many layers, because gradients
+                can flow along the identity path (the skip) without being repeatedly squashed.​
+                They let networks go much deeper (50–100+ layers in ResNets, similarly in Transformers) while still converging
+                well, often improving accuracy and training stability"""
             # Residual blocks help the network learn complex mappings without vanishing gradients.
             # No downsampling here; shape stays (Batch, 128, H, W)
+            # they simply give gradients an extra, easy path where they are almost unchanged.
             
             nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=0),
             """Downsampling layer: reduces spatial dimensions H × W → H/2 × W/2
