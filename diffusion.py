@@ -8,7 +8,15 @@ class TimeEmbedding(nn.Module):
         super().__init__()
         self.linear_1 = nn.Linear(n_embd, 4 * n_embd)
         self.linear_2 = nn.Linear(4 * n_embd, 4 * n_embd)
-        # explanding embeddign so model has more space to work on
+        # linear 1 - explanding embedding dimen so model has more space to work on
+        """linear_2 is a learned matrix multiplication that:
+            mixes the 4× expanded features
+            creates new combinations of them
+            applies a learned transformation in the high-dimensional space"""
+        """Y is this mixing essential - This mixing is essential — it allows:
+                feature interactions
+                learned combinations
+                complex pattern formation"""
 
     def forward(self, x):
         
@@ -22,14 +30,18 @@ class UNET_ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, n_time=1280):
         super().__init__()
         self.groupnorm_feature = nn.GroupNorm(32, in_channels)
+        # Normalizes the input feature map per group of channels (32 groups) to stabilize training before the conv
         self.conv_feature = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        # Applies a 3×3 convolution to transform the spatial feature map from in_channels to out_channels while preserving H×W (padding=1)
         self.linear_time = nn.Linear(n_time, out_channels)
-        """groupnorm_feature + conv_feature = process spatial features.
-           linear_time = transforms timestep embedding to match out_channels."""
+        # takes the timestep embedding vector and turns it into a vector with length = out_channels so that it can be added to the conv feature channels at that layer
+        # Y we do this ? - It turns the timestep into per-channel numbers so each feature channel knows “what time step” it is and can behave differently at different steps
 
         self.groupnorm_merged = nn.GroupNorm(32, out_channels)
         self.conv_merged = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
         # second round of that
+        # Y we do it twice ? - With two convs, the block can apply two nonlinear transformations to the features before adding the skip, which lets it model more complex patterns and improves training stability
+        # research showed that adding it twice works much better than once
 
         if in_channels == out_channels:
             self.residual_layer = nn.Identity()
@@ -38,7 +50,6 @@ class UNET_ResidualBlock(nn.Module):
             # step to make sure in channel = out channels if not it use 1 * 1 conv layer to convert
     
     def forward(self, feature, time):
-        
 
         residue = feature
         feature = self.groupnorm_feature(feature)
@@ -48,6 +59,7 @@ class UNET_ResidualBlock(nn.Module):
         
         time = F.silu(time)
         time = self.linear_time(time)
+        # Map the time embedding from size n_time to size out_channels, giving one scalar “time bias” per channel
         merged = feature + time.unsqueeze(-1).unsqueeze(-1)
         """It turns the scalar timestep info into a vector and adds it onto every pixel’s channels.
             First two lines: make a per‑channel “time embedding” vector.​
@@ -58,6 +70,9 @@ class UNET_ResidualBlock(nn.Module):
         merged = self.conv_merged(merged)
         return merged + self.residual_layer(residue)
         # combine spacial feature with timestep with residual
+        """Normalizes the merged feature map, applies SiLU, and runs a second conv to further refine “feature + time”.​
+
+Then adds the original input (or 1×1‑projected version) as a residual, so the block outputs “input + learned correction”, following a ResNet-style design"""
 
 class UNET_AttentionBlock(nn.Module):
     def __init__(self, n_head: int, n_embd: int, d_context=768):
@@ -78,11 +93,15 @@ class UNET_AttentionBlock(nn.Module):
            attention_2 = cross-attention (pixels attend to text embedding / context)."""
         
         self.layernorm_3 = nn.LayerNorm(channels)
+        # Normalizes per token (per pixel position in the flattened sequence) before the Multilayer perceptron for stability
         self.linear_geglu_1  = nn.Linear(channels, 4 * channels * 2)
+        # First linear of a GeGLU MLP: expands channel dim to 4*channels*2, which is then split into (x, gate) for gated activation
         self.linear_geglu_2 = nn.Linear(4 * channels, channels)
+        # Second linear: projects the activated/gegated features back down to channels
         self.conv_output = nn.Conv2d(channels, channels, kernel_size=1, padding=0)
+        # After reshaping the sequence back to [B, C, H, W], this 1×1 conv acts as the final linear projection in image space
         # GeGLU feedforward network for feature transformation.
-        # conv_output = final linear layer after reshaping features back to (B, C, H, W)
+        # conv_output = final linear layer after reshaping features back to (B, C, H, W) which is imagefeature map channels
     
     def forward(self, x, context):
         
@@ -250,6 +269,7 @@ class UNET(nn.Module):
         # run the model 
 
 class UNET_OutputLayer(nn.Module):
+    """This is the very last layer of the UNet’s forward pass, turning the final 320‑channel features into the 4 latent channels the diffusion loss uses"""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.groupnorm = nn.GroupNorm(32, in_channels)
@@ -268,6 +288,7 @@ class UNET_OutputLayer(nn.Module):
         return x
 
 class Diffusion(nn.Module):
+    """This Diffusion class is the top-level model wrapper: given noisy latents, text context, and a timestep, it runs the UNet and outputs the predicted noise for that step."""
     def __init__(self):
         super().__init__()
         self.time_embedding = TimeEmbedding(320)
