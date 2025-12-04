@@ -55,7 +55,7 @@ class DDPMSampler:
         alpha_prod_t = self.alphas_cumprod[timestep]
         # use the cumprod func to get how much of the image is left at this timestamp t
         alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.one
-        # This is alpha t-1 for the previous step; if there is no previous step (t is the first), it uses 1.0 as a safe default
+        # This is alpha t-1 for the previous step; if there is no previous step (t is the first), it uses 1.0(full image) as a safe default
         current_beta_t = 1 - alpha_prod_t / alpha_prod_t_prev
         # This recovers the “per-step” noise amount between t and prev_t (a kind of effective beta T )from the cumulative products
         variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * current_beta_t
