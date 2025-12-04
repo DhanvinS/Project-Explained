@@ -111,9 +111,14 @@ class DDPMSampler:
         # estimate clean image using formula
         pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * current_beta_t) / beta_prod_t
         current_sample_coeff = current_alpha_t ** (0.5) * beta_prod_t_prev / beta_prod_t
+        """These two scalars decide:
+            how much of x₀̂ to use
+            how much of x_t to keep"""
         """pred_original_sample_coeff = how much of the clean estimate x0 to use.current_sample_coeff = how much of the current noisy sample xt to keep."""
         
         pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * latents
+        # x_{t-1} = A·x₀̂ + B·x_t
+        # how much of the original sample to keep and how much current noisy latent to keep
         # our best guess of next less noisy step
 
      
@@ -122,6 +127,7 @@ class DDPMSampler:
             Ensures diversity in generated images"""
         if t > 0:
             device = model_output.device
+            # just grabs whether model_output is on CPU or GPU (e.g., cuda:0) so that any new tensors (like noise) are created on the same device
             noise = torch.randn(model_output.shape, generator=self.generator, device=device, dtype=model_output.dtype)
             """Think of DDPM as doing two things at once in the backward process:
                     Denoising (mean part) – move xt toward a cleaner sample using the model’s predicted noise.
@@ -138,22 +144,28 @@ class DDPMSampler:
         # forward diffusion
         # does not take part in backward
         alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        # Move the precomputed alpha t schedule to the same device and dtype as the images
         timesteps = timesteps.to(original_samples.device)
+        # Ensure the timestep indices live on the same device as the images
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+        # Make it a 1D tensor of shape [batch]
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
+            """Keep adding trailing singleton dimensions so its shape becomes [batch, 1, 1, 1, ...], letting it broadcast over height/width/channels"""
 
         sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+        # both alpha nad 1- alpha come from alpha cumprod which already stores alpha for each step
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
         # the while statements do this Those lines just reshape things so “one number per batch item” can be multiplied with a whole image tensor
-
+        """The whiel statements they keep adding trailing 1 dimensions so that the timestep scalars’ shape matches the number of dimensions of original_samples"""
         noise = torch.randn(original_samples.shape, generator=self.generator, device=original_samples.device, dtype=original_samples.dtype)
         # this is epsilon noise = epsilon from our formulas 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        # full formula xt = alpha x0 + beta epsilon
         return noisy_samples
 
         
